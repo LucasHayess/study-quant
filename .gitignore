@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pycache/
 .pytest_cache/
+.DS_Store
 .env
 .env.*
 !.env.example

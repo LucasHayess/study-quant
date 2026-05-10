@@ -64,6 +64,20 @@ a-share-turnover-factor \
   --min-listed-days 180
 ```
 
+## 对比实验
+
+运行 3 个对比实验：
+
+- 实验1：`rolling(5)`，月末换仓。
+- 实验2：`rolling(60)`，月末换仓。
+- 实验3：`rolling(20)`，周末换仓。
+
+```bash
+a-share-turnover-factor --run-experiments --output-dir outputs/experiments --pause 0.05
+```
+
+每个实验会输出一张分组收益柱状图和一张 IC 时序图，图表标题会注明参数。
+
 ## 输出
 
 默认写入 `outputs/`：

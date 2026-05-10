@@ -59,9 +59,9 @@ class TurnoverBacktestTest(unittest.TestCase):
         )
 
         self.assertEqual(list(result.group_returns.columns), ["G1", "G2", "G3"])
-        self.assertTrue(result.monthly_sample_counts.iloc[0] >= 3)
+        self.assertTrue(result.sample_counts.iloc[0] >= 3)
         self.assertTrue(result.average_group_returns.notna().any())
-        self.assertEqual(result.ic_series.index.name, "month_end")
+        self.assertEqual(result.ic_series.index.name, "rebalance_date")
 
 
 if __name__ == "__main__":

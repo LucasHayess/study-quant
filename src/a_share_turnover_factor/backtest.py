@@ -11,7 +11,7 @@ class BacktestResult:
     group_returns: pd.DataFrame
     average_group_returns: pd.Series
     ic_series: pd.Series
-    monthly_sample_counts: pd.Series
+    sample_counts: pd.Series
 
 
 def run_turnover_factor_backtest(
@@ -26,6 +26,7 @@ def run_turnover_factor_backtest(
     group_count: int = 5,
     rolling_window: int = 20,
     min_listed_days: int = 180,
+    rebalance_frequency: str = "monthly",
 ) -> BacktestResult:
     dates = pd.Index(pd.to_datetime(trade_dates), name="trade_date")
     if dates.empty:
@@ -43,17 +44,17 @@ def run_turnover_factor_backtest(
     adj_close = close * factor_df
 
     factor = turnover.rolling(rolling_window, min_periods=rolling_window).mean()
-    month_ends = _month_end_trade_dates(dates, start_date, end_date)
-    if len(month_ends) < 2:
-        raise ValueError("Need at least two month-end trading dates to compute forward returns.")
+    rebalance_dates = _rebalance_trade_dates(dates, start_date, end_date, rebalance_frequency)
+    if len(rebalance_dates) < 2:
+        raise ValueError("Need at least two rebalance dates to compute forward returns.")
 
-    factor_m = factor.reindex(month_ends)
-    month_close = adj_close.reindex(month_ends)
-    forward_returns = month_close.shift(-1) / month_close - 1.0
+    factor_rebalance = factor.reindex(rebalance_dates)
+    rebalance_close = adj_close.reindex(rebalance_dates)
+    forward_returns = rebalance_close.shift(-1) / rebalance_close - 1.0
 
-    active_mask = _active_on_dates(stock_info, month_ends)
-    listed_mask = _listed_days_mask(stock_info, month_ends, min_listed_days)
-    st_mask = _st_mask(stock_info, namechange, month_ends)
+    active_mask = _active_on_dates(stock_info, rebalance_dates)
+    listed_mask = _listed_days_mask(stock_info, rebalance_dates, min_listed_days)
+    st_mask = _st_mask(stock_info, namechange, rebalance_dates)
     eligible = active_mask & listed_mask & ~st_mask
 
     group_returns: dict[pd.Timestamp, pd.Series] = {}
@@ -61,8 +62,8 @@ def run_turnover_factor_backtest(
     sample_counts: dict[pd.Timestamp, int] = {}
     labels = [f"G{i}" for i in range(1, group_count + 1)]
 
-    for date in month_ends[:-1]:
-        factor_s = factor_m.loc[date]
+    for date in rebalance_dates[:-1]:
+        factor_s = factor_rebalance.loc[date]
         return_s = forward_returns.loc[date]
         valid = eligible.loc[date] & factor_s.notna() & return_s.notna()
         sample_counts[date] = int(valid.sum())
@@ -79,19 +80,19 @@ def run_turnover_factor_backtest(
         ic_values[date] = _spearman_ic(factor_valid, return_valid)
 
     group_returns_df = pd.DataFrame.from_dict(group_returns, orient="index").sort_index()
-    group_returns_df.index.name = "month_end"
+    group_returns_df.index.name = "rebalance_date"
     ic_series = pd.Series(ic_values, name="IC").sort_index()
-    ic_series.index.name = "month_end"
+    ic_series.index.name = "rebalance_date"
     sample_counts_series = pd.Series(sample_counts, name="sample_count").sort_index()
-    sample_counts_series.index.name = "month_end"
+    sample_counts_series.index.name = "rebalance_date"
     average_group_returns = group_returns_df.mean(axis=0)
-    average_group_returns.name = "average_monthly_return"
+    average_group_returns.name = "average_period_return"
 
     return BacktestResult(
         group_returns=group_returns_df,
         average_group_returns=average_group_returns,
         ic_series=ic_series,
-        monthly_sample_counts=sample_counts_series,
+        sample_counts=sample_counts_series,
     )
 
 
@@ -136,11 +137,38 @@ def _pivot_panel(frame: pd.DataFrame, value_col: str, dates: pd.Index, codes: li
 
 
 def _month_end_trade_dates(dates: pd.Index, start_date: str, end_date: str) -> pd.DatetimeIndex:
+    return _period_end_trade_dates(dates, start_date, end_date, "M", "month_end")
+
+
+def _week_end_trade_dates(dates: pd.Index, start_date: str, end_date: str) -> pd.DatetimeIndex:
+    return _period_end_trade_dates(dates, start_date, end_date, "W-FRI", "week_end")
+
+
+def _rebalance_trade_dates(
+    dates: pd.Index,
+    start_date: str,
+    end_date: str,
+    rebalance_frequency: str,
+) -> pd.DatetimeIndex:
+    if rebalance_frequency == "monthly":
+        return _month_end_trade_dates(dates, start_date, end_date)
+    if rebalance_frequency == "weekly":
+        return _week_end_trade_dates(dates, start_date, end_date)
+    raise ValueError("rebalance_frequency must be 'monthly' or 'weekly'.")
+
+
+def _period_end_trade_dates(
+    dates: pd.Index,
+    start_date: str,
+    end_date: str,
+    period_freq: str,
+    index_name: str,
+) -> pd.DatetimeIndex:
     start = pd.to_datetime(start_date, format="%Y%m%d")
     end = pd.to_datetime(end_date, format="%Y%m%d")
     scoped = pd.Series(dates[(dates >= start) & (dates <= end)])
-    month_ends = scoped.groupby(scoped.dt.to_period("M")).max().sort_values()
-    return pd.DatetimeIndex(month_ends.tolist(), name="month_end")
+    period_ends = scoped.groupby(scoped.dt.to_period(period_freq)).max().sort_values()
+    return pd.DatetimeIndex(period_ends.tolist(), name=index_name)
 
 
 def _active_on_dates(stock_info: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
