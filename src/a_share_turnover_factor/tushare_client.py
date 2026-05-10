@@ -140,16 +140,27 @@ class TushareDataClient:
         raise RuntimeError(f"Tushare call failed: {api_name} {cache_key}") from last_error
 
 
-def fetch_daily_panels(client: TushareDataClient, trade_dates: list[str]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def fetch_daily_panels(
+    client: TushareDataClient,
+    turnover_dates: list[str],
+    price_dates: list[str] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if price_dates is None:
+        price_dates = turnover_dates
+
     daily_frames = []
     basic_frames = []
     adj_frames = []
-    total = len(trade_dates)
+    turnover_total = len(turnover_dates)
+    price_total = len(price_dates)
 
-    for idx, trade_date in enumerate(trade_dates, start=1):
-        print(f"[fetch] {trade_date} ({idx}/{total})")
-        daily_frames.append(client.daily(trade_date))
+    for idx, trade_date in enumerate(turnover_dates, start=1):
+        print(f"[fetch] turnover {trade_date} ({idx}/{turnover_total})")
         basic_frames.append(client.daily_basic(trade_date))
+
+    for idx, trade_date in enumerate(price_dates, start=1):
+        print(f"[fetch] price {trade_date} ({idx}/{price_total})")
+        daily_frames.append(client.daily(trade_date))
         adj_frames.append(client.adj_factor(trade_date))
 
     daily = pd.concat(daily_frames, ignore_index=True) if daily_frames else pd.DataFrame()

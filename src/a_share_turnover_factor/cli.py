@@ -10,7 +10,23 @@ from .plotting import save_plots
 from .tushare_client import TushareDataClient, fetch_daily_panels
 
 
+def load_local_env(env_path: Path = Path(".env")) -> None:
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def parse_args() -> argparse.Namespace:
+    load_local_env()
     parser = argparse.ArgumentParser(
         description="Fetch A-share daily data from Tushare and backtest a 20-day turnover factor."
     )
@@ -33,6 +49,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def month_end_trade_dates(trade_dates: list[str], start_date: str, end_date: str) -> list[str]:
+    import pandas as pd
+
+    dates = pd.Series(pd.to_datetime(trade_dates, format="%Y%m%d"))
+    start = pd.to_datetime(start_date, format="%Y%m%d")
+    end = pd.to_datetime(end_date, format="%Y%m%d")
+    scoped = dates[(dates >= start) & (dates <= end)]
+    month_ends = scoped.groupby(scoped.dt.to_period("M")).max().sort_values()
+    return [date.strftime("%Y%m%d") for date in month_ends]
+
+
 def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
@@ -53,8 +80,10 @@ def main() -> None:
     print(f"[step] Fetch trading calendar {args.warmup_start_date} -> {fetch_end_date}")
     trade_dates = client.trade_dates(args.warmup_start_date, fetch_end_date)
 
-    print("[step] Fetch daily close, adjustment factor, and daily turnover")
-    daily, daily_basic, adj_factor = fetch_daily_panels(client, trade_dates)
+    price_dates = month_end_trade_dates(trade_dates, args.start_date, fetch_end_date)
+
+    print("[step] Fetch daily turnover and month-end prices")
+    daily, daily_basic, adj_factor = fetch_daily_panels(client, trade_dates, price_dates)
 
     print("[step] Run factor backtest")
     result = run_turnover_factor_backtest(

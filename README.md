@@ -26,6 +26,14 @@ pip install -e .
 export TUSHARE_TOKEN="你的token"
 ```
 
+也可以在项目根目录创建本地 `.env` 文件：
+
+```bash
+TUSHARE_TOKEN=你的token
+```
+
+`.env` 已加入 `.gitignore`，不会被提交。
+
 也可以运行时传入：
 
 ```bash
