@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pycache/
 .pytest_cache/
+.matplotlib/
 .DS_Store
 .env
 .env.*
